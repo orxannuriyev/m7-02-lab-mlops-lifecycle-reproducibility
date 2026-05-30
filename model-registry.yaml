@@ -1,0 +1,45 @@
+registry:
+  name: northstar-models
+  stages:
+    - name: staging
+      promoted_from: automated_training_pipeline
+      promotion_rule: automatic
+      gates:
+        - global_mae_improvement: "Global Mean Absolute Error (MAE) on the frozen evaluation set must be <= current production baseline"
+        - strict_latency_check: "Inference latency p99 <= 100ms under simulated 200 RPS load test"
+        - extreme_error_bound: "99th percentile of ETA prediction errors must not exceed 15 minutes"
+
+    - name: production
+      promoted_from: staging
+      promotion_rule: manual
+      gates:
+        - regional_parity: "Zero degradation > 5% in regional MAE (specifically testing the bottom 3 historically worst-performing delivery zones)"
+        - shadow_stability: "Successful 12-hour shadow deployment with 0 Out-Of-Memory (OOM) exceptions and < 0.01% timeout rate"
+        - feature_drift_check: "Maximum Population Stability Index (PSI) < 0.1 across all top-10 importance features vs. live traffic"
+      approvers:
+        - Lead ML Engineer
+        - Operations/Dispatch Product Manager
+
+    - name: archived
+      promoted_from: production
+      promotion_rule: automatic
+      trigger: "A new version is promoted to production OR the model version has been inactive in staging for > 30 days"
+
+models:
+  - name: eta
+    owner: ml-routing-team
+    sla_p95_ms: 150
+    retention_versions: 10
+    
+  - name: dispatcher-routing
+    owner: ml-dispatch-team
+    sla_p95_ms: 80
+    retention_versions: 10
+
+lineage:
+  required_fields:
+    - git_sha
+    - dataset_hash
+    - training_run_id
+    - container_image_uri
+    - hyperparameter_signature
